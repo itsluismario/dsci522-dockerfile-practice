@@ -1,0 +1,12 @@
+[project]
+name = "lecture3"
+version = "0.1.0"
+requires-python = ">=3.14"
+dependencies = [
+    "cowsay==6.1",
+    "numpy==2.5.5",
+]
+
+[tool.uv]
+# `uv add` writes ad exact version (==)
+add-bounds = "exact"

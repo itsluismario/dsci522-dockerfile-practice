@@ -1,0 +1,10 @@
+services:
+  analysis-env:
+    build: .
+    image: 2026-11-24-docker
+    ports:
+      # 2222 on your computer, 22 in the container
+      #127.0.0.1:2222:22" stop other on the same WI-FI form reaching it. 
+      - "127.0.0.1:2222:22"
+    volumes:
+      - .:/workspace 
