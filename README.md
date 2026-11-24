@@ -1,28 +1,40 @@
-# 24-11-Docker
+# dsci522-dockerfile-practice
 
-Notas de aprendizaje sobre Docker: imágenes, contenedores, Dockerfile, volúmenes y Docker Compose, con R (`rocker/r-ver`) y Python (`uv`).
+Docker image with Python 3.14, `cowsay` and `numpy`, managed with [uv](https://docs.astral.sh/uv/). The image is built and published to Docker Hub by GitHub Actions.
+
+**Docker Hub:** https://hub.docker.com/r/itsluismario/dsci522-dockerfile-practice
+
+```bash
+docker run --rm itsluismario/dsci522-dockerfile-practice uv run python -c "import cowsay, numpy; cowsay.cow('hi')"
+```
 
 ---
 
-## 1. Conceptos básicos
+# Learning notes: Docker
 
-| | Qué es | Cuándo se define |
+Notes on Docker basics: images, containers, the Dockerfile, volumes and Docker Compose, with R (`rocker/r-ver`) and Python (`uv`).
+
+---
+
+## 1. Core concepts
+
+| | What it is | When it's defined |
 |---|---|---|
-| **Dockerfile** | La receta | Lo escribes tú |
-| **Imagen** | Dependencias y versiones empaquetadas | `docker build` |
-| **Contenedor** | La imagen corriendo | `docker run` |
-| **Puertos** | Conexión entre tu máquina y el contenedor | `docker run -p` |
-| **Volumen** | Carpeta de tu máquina conectada al contenedor | `docker run -v` |
+| **Dockerfile** | The recipe | You write it |
+| **Image** | Packaged dependencies and versions | `docker build` |
+| **Container** | The image running | `docker run` |
+| **Ports** | Connection between your machine and the container | `docker run -p` |
+| **Volume** | A folder on your machine connected to the container | `docker run -v` |
 
-- La **imagen** se parece a una *clase* y el **contenedor** a un *objeto*: de una imagen puedes lanzar muchos contenedores.
-- Cada instrucción del Dockerfile crea una **capa**. Docker guarda en caché las capas que no cambian, así que **el orden importa**: lo que menos cambia va primero.
-- Un contenedor **vive mientras vive su proceso principal**, el comando de `CMD`. Cuando ese proceso termina, el contenedor se detiene.
-- Lo que se crea dentro de un contenedor **se pierde al borrarlo**. Lo permanente va en el Dockerfile, y los datos en volúmenes.
-- **Cliente y daemon**: el comando `docker` solo envía órdenes. El motor que construye y ejecuta es el daemon, que en Mac arranca **Docker Desktop**.
+- An **image** is like a *class* and a **container** is like an *object*: you can start many containers from one image.
+- Each Dockerfile instruction creates a **layer**. Docker caches layers that haven't changed, so **order matters**: what changes least goes first.
+- A container **lives as long as its main process lives**, the `CMD` command. When that process ends, the container stops.
+- Anything created inside a container **is lost when the container is removed**. Anything permanent goes in the Dockerfile, and data goes in volumes.
+- **Client and daemon**: the `docker` command only sends instructions. The engine that builds and runs is the daemon, which **Docker Desktop** starts on a Mac.
 
 ---
 
-## 2. Dockerfile con R (`rocker/r-ver`)
+## 2. Dockerfile with R (`rocker/r-ver`)
 
 ```dockerfile
 FROM rocker/r-ver:4.6.2
@@ -30,9 +42,9 @@ FROM rocker/r-ver:4.6.2
 CMD ["R"]
 ```
 
-- `rocker/r-ver` fija la versión de R, y el repositorio de CRAN queda fijado a una fecha. Esto lo hace reproducible.
-- Usa siempre una versión exacta, nunca `latest`.
-- Ejemplo más completo:
+- `rocker/r-ver` pins the R version, and the CRAN repository is pinned to a date. This makes it reproducible.
+- Always use an exact version, never `latest`.
+- A fuller example:
 
 ```dockerfile
 FROM rocker/r-ver:4.6.2
@@ -48,58 +60,64 @@ COPY script.R .
 CMD ["Rscript", "script.R"]
 ```
 
-### Instrucciones principales
+### Main instructions
 
-| Instrucción | Para qué sirve |
+| Instruction | What it does |
 |---|---|
-| `FROM` | Imagen base (siempre va primero) |
-| `RUN` | Ejecuta un comando **al construir** |
-| `WORKDIR` | Carpeta de trabajo dentro de la imagen |
-| `COPY` | Copia archivos de tu máquina a la imagen |
-| `ENV` | Define variables de entorno |
-| `EXPOSE` | Solo **documenta** un puerto; no lo abre |
-| `CMD` | Comando por defecto **al ejecutar** |
+| `FROM` | Base image (always comes first) |
+| `RUN` | Runs a command **at build time** |
+| `WORKDIR` | Working folder inside the image |
+| `COPY` | Copies files from your machine into the image |
+| `ENV` | Sets environment variables |
+| `EXPOSE` | Only **documents** a port; it doesn't open it |
+| `CMD` | Default command **at run time** |
 
 ---
 
-## 3. Dockerfile con Python (`uv`)
+## 3. Dockerfile with Python (`uv`)
 
 ```dockerfile
 FROM ubuntu:24.04
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
-
-# Entorno fuera de /workspace, para que el volumen no lo tape
-ENV UV_PROJECT_ENVIRONMENT=/opt/venv
+COPY --from=ghcr.io/astral-sh/uv:0.13.7 /uv /uvx /bin/
 
 WORKDIR /workspace
 
-# 1. Primero solo las dependencias (aprovecha la caché)
 COPY pyproject.toml uv.lock .python-version ./
+
+# Environment outside /workspace, so a volume doesn't hide it
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv
+
 RUN uv sync --locked
+```
 
-# 2. Después el código
+To also copy your code and set a default command:
+
+```dockerfile
 COPY . .
-
 CMD ["uv", "run", "python", "hello.py"]
 ```
 
-### `pyproject.toml` y `uv.lock`
+### `pyproject.toml` and `uv.lock`
 
-- **`pyproject.toml`**: lo editas tú. Dice *qué* paquetes necesitas.
-- **`uv.lock`**: lo genera uv. Fija la **versión exacta** de todo, incluidas las dependencias de tus dependencias.
-- El lockfile se crea **en tu Mac**, no dentro de Docker:
+- **`pyproject.toml`**: you edit it. It says *which* packages you need.
+- **`uv.lock`**: uv generates it. It pins the **exact version** of everything, including your dependencies' dependencies.
+- The lockfile is created **on your Mac**, not inside Docker:
 
 ```bash
-uv init            # crea pyproject.toml y .python-version
-uv add cowsay==6.1 # añade la dependencia y crea/actualiza uv.lock
-uv lock            # regenera uv.lock si editaste pyproject.toml a mano
+uv init            # creates pyproject.toml and .python-version
+uv add cowsay==6.1 # adds the dependency and creates/updates uv.lock
+uv lock            # regenerates uv.lock if you edited pyproject.toml by hand
 ```
 
-- `uv sync --locked` instala exactamente lo del lockfile, y falla si no coincide con `pyproject.toml`.
-- El `.venv` de tu Mac **no sirve** en Linux, porque algunos paquetes tienen partes compiladas para macOS. Por eso se crea dentro de la imagen.
+- `uv sync --locked` installs exactly what's in the lockfile, and fails if it doesn't match `pyproject.toml`.
+- With `add-bounds = "exact"` under `[tool.uv]`, `uv add` writes packages with `==`.
+- Your Mac's `.venv` **doesn't work** on Linux, because some packages contain parts compiled for macOS. That's why it's created inside the image.
 
-### `.dockerignore`
+### `.gitignore` vs `.dockerignore`
+
+- `.gitignore`: files git doesn't upload to GitHub (for example `.venv/`, secrets).
+- `.dockerignore`: files Docker doesn't copy into the image:
 
 ```
 .git/
@@ -111,54 +129,54 @@ __pycache__/
 
 ---
 
-## 4. `COPY` y rutas
+## 4. `COPY` and paths
 
 ```
 COPY  hello.py   ./
-      └ origen ┘ └ destino ┘
+      └ source ┘ └ destination ┘
 ```
 
-- **Origen**: ruta en tu Mac, relativa al contexto de construcción (el `.` de `docker build`).
-- **Destino**: ruta dentro de la imagen, relativa al `WORKDIR`.
-- `./` significa "la carpeta actual" = el `WORKDIR`. Con `WORKDIR /workspace`, `./` equivale a `/workspace/`.
-- La `/` final indica que el destino es una carpeta. Es obligatoria cuando copias varios archivos.
-- Usa **`COPY . .`** en vez de `COPY * ./`: con `*`, Docker copia el **contenido** de las carpetas y pierde la estructura.
+- **Source**: a path on your Mac, relative to the build context (the `.` in `docker build`).
+- **Destination**: a path inside the image, relative to `WORKDIR`.
+- `./` means "the current folder" = `WORKDIR`. With `WORKDIR /workspace`, `./` is the same as `/workspace/`.
+- A trailing `/` means the destination is a folder. It's required when copying several files.
+- Use **`COPY . .`** rather than `COPY * ./`: with `*`, Docker copies the **contents** of folders and loses the structure.
 
 ---
 
-## 5. Volúmenes (`--volume` / `-v`)
+## 5. Volumes (`--volume` / `-v`)
 
 ```bash
-docker run --rm -it --volume "$(pwd)":/workspace mi-imagen
-#                            └─ tu Mac ─┘ └ contenedor ┘
+docker run --rm -it --volume "$(pwd)":/workspace my-image
+#                            └ your Mac ┘ └ container ┘
 ```
 
-- Conectan una carpeta de tu Mac con una del contenedor, **en vivo y en las dos direcciones**.
-- `COPY` actúa al construir y hace una copia fija. `--volume` actúa al ejecutar y conecta la carpeta en vivo.
-- En Mac, la ruta debe ser absoluta: por eso se usa `"$(pwd)"`.
+- They connect a folder on your Mac to one in the container, **live and in both directions**.
+- `COPY` acts at build time and makes a fixed copy. `--volume` acts at run time and connects the folder live.
+- On a Mac the path must be absolute, which is why `"$(pwd)"` is used.
 
-### Un volumen **tapa** la carpeta donde se monta
+### A volume **hides** the folder it's mounted on
 
-Analogía de los **portarretratos**: el volumen pone la foto de tu Mac *delante* de lo que había en esa carpeta. Lo de atrás no se borra, pero deja de verse.
+The **picture frame** analogy: the volume puts the photo of your Mac's folder *in front of* whatever was in that folder. What's behind isn't deleted, but you can't see it anymore.
 
 ```
-❌ Mal                         ✅ Bien
+❌ Wrong                       ✅ Right
 /                              /
-├── workspace/  ← volumen      ├── workspace/  ← volumen
-│   └── .venv/  ← tapado       │   └── hello.py
+├── workspace/  ← volume       ├── workspace/  ← volume
+│   └── .venv/  ← hidden       │   └── hello.py
 └── opt/                       └── opt/
-                                   └── venv/   ← intacto
+                                   └── venv/   ← untouched
 ```
 
-**Regla:** todo lo que está *dentro* de la carpeta que montas queda tapado; lo que está *fuera*, no. Por eso se usa `ENV UV_PROJECT_ENVIRONMENT=/opt/venv`. Puede ser cualquier ruta fuera de `/workspace`; `/opt` es solo la convención para software adicional.
+**Rule:** everything *inside* the folder you mount is hidden; everything *outside* it isn't. That's why `ENV UV_PROJECT_ENVIRONMENT=/opt/venv` is used. It can be any path outside `/workspace`; `/opt` is just the convention for add-on software.
 
 ---
 
 ## 6. Docker Compose
 
-- **El Dockerfile** dice **cómo construir** la imagen ("¿qué hay dentro?").
-- **Compose** dice **cómo ejecutar** los contenedores ("¿cómo lo arranco?"): puertos, volúmenes y nombres.
-- Compose no sustituye al Dockerfile: `build: .` lo usa. Es tu `docker run` escrito en un archivo, y permite arrancar varios servicios juntos.
+- **The Dockerfile** says **how to build** the image ("what's inside?").
+- **Compose** says **how to run** containers ("how do I start it?"): ports, volumes and names.
+- Compose doesn't replace the Dockerfile; `build: .` uses it. It's your `docker run` written in a file, and it can start several services together.
 
 ```yaml
 services:
@@ -166,108 +184,135 @@ services:
     build: .                    # docker build .
     image: 2026-11-24-docker    # --tag
     ports:
-      - "127.0.0.1:2222:22"     # -p (solo accesible desde tu computadora)
+      - "127.0.0.1:2222:22"     # -p (only reachable from your computer)
     volumes:
-      - .:/workspace            # -v  tu_Mac:contenedor
+      - .:/workspace            # -v  your_Mac:container
 ```
 
-- Los volúmenes necesitan **dos rutas** (`origen:destino`).
-- Pon los puertos **entre comillas**.
-- El puerto 22 es SSH: solo sirve si la imagen tiene un servidor SSH.
+- Volumes need **two paths** (`source:destination`).
+- Put ports **in quotes**.
+- Port 22 is SSH: it's only useful if the image has an SSH server.
 
 ```bash
-docker compose up --build                 # construir y arrancar
-docker compose up -d                      # en segundo plano
-docker compose run --rm analysis-env bash # terminal dentro
-docker compose down                       # detener y borrar
+docker compose up --build                 # build and start
+docker compose up -d                      # in the background
+docker compose run --rm analysis-env bash # a shell inside
+docker compose down                       # stop and remove
 ```
 
 ---
 
-## 7. Comandos esenciales
+## 7. GitHub Actions and Docker Hub
+
+- The workflow `.github/workflows/publish-dockerhub.yml` builds the image and pushes it to Docker Hub with two tags: `latest` and `sha-` plus the first 7 characters of the commit.
+- It runs by hand (**Actions → Run workflow**) or on a push that changes the `Dockerfile`, `uv.lock`, `renv.lock` or the workflow file.
+- It needs two **repository secrets** (**Settings → Secrets and variables → Actions**), each one a separate secret:
+
+| Name | Value |
+|---|---|
+| `DOCKER_USERNAME` | Docker Hub username (lowercase) |
+| `DOCKER_PASSWORD` | Docker Hub access token with **Read & Write** (not your password) |
+
+- A token's value is shown **only once**, when it's created. Docker Desktop's "auto-generated" tokens can't be reused.
+- Secrets aren't environment variables automatically: the workflow reads them with `${{ secrets.NAME }}`. In the logs they appear as `***`.
+- `mkdir -p .github/workflows` creates every missing folder in the path, and doesn't fail if they already exist.
+
+---
+
+## 8. Essential commands
 
 ```bash
-# Construir (desde la carpeta del proyecto; el "." es obligatorio)
-cd /Users/itsluismario/Downloads/UBC/522/Lecture3
-docker build --tag lecture3-r:2026-11-14 .
+# Build (from the project folder; the "." is required)
+docker build --tag dsci522-test .
 
-# Ejecutar
-docker run --rm -it lecture3-r:2026-11-14        # interactivo; se borra al salir
-docker run -dit --name mi-r lecture3-r:2026-11-14 # en segundo plano
+# Run
+docker run --rm -it dsci522-test                 # interactive; removed on exit
+docker run -dit --name my-r lecture3-r:2026-11-14 # in the background
 
-# Conectarse a un contenedor que está corriendo
-docker attach mi-r          # salir sin matarlo: Ctrl+P y luego Ctrl+Q
-docker exec -it mi-r bash   # nueva terminal dentro
+# Connect to a running container
+docker attach my-r          # leave without stopping it: Ctrl+P then Ctrl+Q
+docker exec -it my-r bash   # a new shell inside
 
-# Ver y gestionar
-docker images               # imágenes
-docker ps / docker ps -a    # contenedores (corriendo / todos)
-docker stop | start | rm mi-r
-docker logs mi-r
+# Inspect and manage
+docker images               # images
+docker ps / docker ps -a    # containers (running / all)
+docker stop | start | rm my-r
+docker logs my-r
 docker rmi lecture3-r:2026-11-14
-docker version              # comprueba que el daemon responde (sección Server)
+docker version              # checks the daemon responds (Server section)
 ```
 
-### Nombres y etiquetas: `nombre:etiqueta`
+### Names and tags: `name:tag`
 
 ```
 lecture3-r:2026-11-14
-└ nombre ┘ └ etiqueta ┘
+└ name ─┘ └── tag ──┘
 ```
 
-- El **nombre** dice *qué* es; la **etiqueta**, *qué versión*. Sin etiqueta, Docker usa `latest`.
-- `lecture3-r` es un nombre inventado: puede ser cualquiera.
-- Reglas: **solo minúsculas**; puedes usar letras, números, `-`, `_` y `.`; no puede empezar ni terminar con separador.
+- The **name** says *what* it is; the **tag**, *which version*. Without a tag, Docker uses `latest`.
+- Names are made up: they can be anything.
+- Rules: **lowercase only**; letters, numbers, `-`, `_` and `.` are allowed; it can't start or end with a separator.
 
-### Opciones (flags)
+### Flags
 
-- **Un guion** para opciones de una letra: `-i`, `-t`, `-p`, `-v`. Se pueden juntar: `-it`.
-- **Dos guiones** para palabras completas: `--rm`, `--tag`, `--name`, `--volume`.
-- `-it` es necesario para programas interactivos como R o Python. Sin él, el proceso termina al instante.
+- **One dash** for one-letter options: `-i`, `-t`, `-p`, `-v`. They can be combined: `-it`.
+- **Two dashes** for full words: `--rm`, `--tag`, `--name`, `--volume`.
+- `-it` is needed for interactive programs like R or Python. Without it, the process ends immediately.
 
 ---
 
-## 8. Errores que encontré y su solución
+## 9. Errors I hit and how I fixed them
 
-| Error / síntoma | Causa | Solución |
+| Error / symptom | Cause | Fix |
 |---|---|---|
-| `docker build` no hace nada | Faltaba el contexto | `docker build --tag nombre .` (con el `.`) |
-| `--tag 2026-11-14-docker.` | El punto estaba pegado al nombre | Separar con un espacio: `... 2026-11-14-docker .` |
-| `failed to connect to the docker API ... docker.sock` | Docker Desktop no estaba corriendo | `open -a Docker` y esperar a que arranque |
-| `unknown instruction: CMD["R"]` | Faltaba un espacio | `CMD ["R"]` |
-| `-rm` no funciona | Opción larga con un solo guion | `--rm` |
-| La imagen no aparece | El nombre no coincidía (día 14 vs 24) | Revisar con `docker images` y copiar `REPOSITORY:TAG` |
-| `coway was not found in the package registry` | Errata en el nombre del paquete | `cowsay==6.1`, o usar `uv add` |
-| Python no encuentra los paquetes al usar `-v` | El volumen tapaba `/workspace/.venv` | `ENV UV_PROJECT_ENVIRONMENT=/opt/venv` |
-| Volumen en Compose `- ./workspace` | Solo tenía una ruta | `- .:/workspace` |
+| `docker build` does nothing | Missing build context | `docker build --tag name .` (with the `.`) |
+| `--tag 2026-11-14-docker.` | The dot was stuck to the name | Separate it with a space: `... 2026-11-14-docker .` |
+| `failed to connect to the docker API ... docker.sock` | Docker Desktop wasn't running | `open -a Docker` and wait for it to start |
+| `unknown instruction: CMD["R"]` | Missing space | `CMD ["R"]` |
+| `-rm` doesn't work | Long option with a single dash | `--rm` |
+| Image not found | The name didn't match (day 14 vs 24) | Check with `docker images` and copy `REPOSITORY:TAG` |
+| `coway was not found in the package registry` | Typo in the package name | `cowsay==6.1`, or use `uv add` |
+| Python can't find packages when using `-v` | The volume hid `/workspace/.venv` | `ENV UV_PROJECT_ENVIRONMENT=/opt/venv` |
+| Compose volume `- ./workspace` | It had only one path | `- .:/workspace` |
+| Remote URL had `TU_USUARIO` | Placeholder copied as-is | `git remote set-url origin git@github.com:itsluismario/dsci522-dockerfile-practice.git` |
+| `deleted by us: Dockerfile` after `git pull` | Local and GitHub histories were unrelated | `git rebase --abort`, then `git pull --no-rebase --allow-unrelated-histories` |
+| Only one secret in the list | `DOCKER_USERNAME` wasn't created | Add each secret separately with **New repository secret** |
 
 ---
 
-## 9. Mis preguntas (y respuestas cortas)
+## 10. My questions (and short answers)
 
-1. **¿La imagen es donde defino dependencias, versiones y puertos? ¿El contenedor es la imagen corriendo?**
-   Sí, el contenedor es la imagen corriendo. Las dependencias se definen en el Dockerfile y se empaquetan en la imagen, pero **los puertos se conectan al ejecutar** (`-p`). `EXPOSE` solo los documenta.
-2. **¿Por qué `docker build` no hizo nada?**
-   Hay que entrar a la carpeta (`cd`) y pasar el contexto (`.`).
-3. **¿Es correcto `docker build --tag 2026-11-14-docker.`?**
-   Falta un espacio antes del punto.
-4. **¿Cómo veo la imagen creada?**
-   `docker images`, o la pestaña *Images* de Docker Desktop.
-5. **¿Qué es `lecture3` en `lecture3-r:2026-11-14`?**
-   Un nombre inventado para la imagen. Puede ser cualquiera, en minúsculas.
-6. **¿Cómo dejo corriendo el contenedor?**
-   Con `-d`: `docker run -dit --name mi-r imagen`. Luego `docker attach` o `docker exec`.
-7. **¿Cómo se crea el `uv.lock`?**
-   En tu Mac, con `uv add` o `uv lock`.
-8. **¿Qué significa `./` en `COPY hello.py ./`?**
-   La carpeta actual dentro de la imagen, es decir, el `WORKDIR`.
-9. **¿Y si pongo `COPY * ./`?**
-   Copia los archivos, pero aplana las carpetas. Mejor `COPY . .` con un `.dockerignore`.
-10. **¿Qué hace `--volume`?**
-    Conecta en vivo una carpeta de tu Mac con una del contenedor.
-11. **¿En Linux el venv tiene que estar en `/opt/venv`?**
-    No. Puede estar en cualquier ruta **fuera** de la carpeta que montas.
-12. **¿El venv debe estar al mismo nivel que `/workspace` y no dentro?**
-    Sí. Debe estar fuera de `/workspace`, por ejemplo en `/opt/venv`, porque `/opt` y `/workspace` cuelgan los dos de `/`.
-13. **¿Diferencia entre Docker Compose y el Dockerfile?**
-    El Dockerfile **construye** la imagen; Compose **ejecuta** los contenedores con su configuración (puertos, volúmenes), y usa el Dockerfile mediante `build: .`.
+1. **Is the image where I define dependencies, versions and ports? Is the container the image running?**
+   Yes, the container is the image running. Dependencies are defined in the Dockerfile and packaged into the image, but **ports are connected at run time** (`-p`). `EXPOSE` only documents them.
+2. **Why did `docker build` do nothing?**
+   You need to `cd` into the folder and pass the context (`.`).
+3. **Is `docker build --tag 2026-11-14-docker.` correct?**
+   A space is missing before the dot.
+4. **How do I see the image I built?**
+   `docker images`, or the *Images* tab in Docker Desktop.
+5. **What is `lecture3` in `lecture3-r:2026-11-14`?**
+   A made-up name for the image. It can be anything, in lowercase.
+6. **How do I keep a container running?**
+   With `-d`: `docker run -dit --name my-r image`. Then `docker attach` or `docker exec`.
+7. **How is `uv.lock` created?**
+   On your Mac, with `uv add` or `uv lock`.
+8. **What does `./` mean in `COPY hello.py ./`?**
+   The current folder inside the image, i.e. `WORKDIR`.
+9. **What if I use `COPY * ./`?**
+   It copies the files but flattens folders. Prefer `COPY . .` with a `.dockerignore`.
+10. **What does `--volume` do?**
+    It connects a folder on your Mac to one in the container, live.
+11. **On Linux, does the venv have to be in `/opt/venv`?**
+    No. It can be any path **outside** the folder you mount.
+12. **Should the venv be at the same level as `/workspace` rather than inside it?**
+    Yes. It must be outside `/workspace`, for example in `/opt/venv`, because `/opt` and `/workspace` both hang directly off `/`.
+13. **What's the difference between Docker Compose and the Dockerfile?**
+    The Dockerfile **builds** the image; Compose **runs** containers with their configuration (ports, volumes), and uses the Dockerfile through `build: .`.
+14. **Do I also need R for the assignment?**
+    No. The assignment asks for **either** uv (Python) **or** renv (R), not both.
+15. **Can I reuse an existing Docker Hub token?**
+    No. Its value is shown only once. Create a new one with **Read & Write**.
+16. **Are repository secrets environment variables?**
+    Not automatically. The workflow reads them with `${{ secrets.NAME }}`, and can turn them into environment variables with `env:`.
+17. **Does the assignment ask for anything in the README?**
+    No, only that a README exists.
